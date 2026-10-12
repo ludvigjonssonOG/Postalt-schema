@@ -1,0 +1,159 @@
+:root {
+  --cell-w: 56px;
+  --date-w: 90px;
+  --row-h: 34px;
+  --name-w: 280px;
+  --border: #d0d5dd;
+  --head: #f2f4f7;
+  --accent: #3b6fd4;
+  --project-bg: #eef3fc;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: system-ui, sans-serif;
+  margin: 0;
+  padding: 24px;
+  color: #1d2939;
+}
+
+h1 { font-size: 1.3rem; margin: 0 0 16px; }
+
+.gantt { overflow: auto; border: 1px solid var(--border); border-radius: 6px; }
+.inner { width: max-content; min-width: 100%; }
+
+/* ---------- Rader ---------- */
+.row { display: flex; }
+.tl { display: flex; }
+
+.name {
+  flex: none;
+  width: var(--name-w);
+  position: sticky;
+  left: 0;
+  z-index: 2;
+  background: #fff;
+  border-right: 2px solid var(--border);
+  border-bottom: 1px solid var(--border);
+  padding: 0 10px;
+  height: var(--row-h);
+  display: flex;
+  align-items: center;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.head .name { background: var(--head); font-weight: 600; height: auto; }
+.sub .name { padding-left: 32px; font-size: .92rem; }
+
+/* Projektrad */
+.project .name { background: var(--project-bg); font-weight: 600; gap: 6px; }
+.project .c { background: var(--project-bg); }
+
+.toggle {
+  border: 0;
+  background: none;
+  cursor: pointer;
+  color: var(--accent);
+  font: inherit;
+  padding: 0 4px;
+}
+
+.name-input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  font-weight: 600;
+  padding: 4px 6px;
+  border-radius: 4px;
+}
+.name-input:hover { background: rgba(255, 255, 255, .7); }
+.name-input:focus { outline: 2px solid var(--accent); background: #fff; }
+
+/* ---------- Tidslinje: rubrik ---------- */
+.n { display: flex; flex-direction: column; }  /* utfälld nod: etikett överst, barn under */
+.k { display: flex; }                          /* barnen sida vid sida */
+
+.c, .h {
+  min-width: var(--cell-w);
+  width: var(--cell-w);
+  border-right: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+}
+
+.c.d, .h.d {
+  min-width: var(--date-w);
+  width: var(--date-w);
+}
+
+.h {
+  background: var(--head);
+  font-size: .8rem;
+  font-weight: 600;
+  min-height: var(--row-h);
+  padding: 0 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  white-space: nowrap;
+  user-select: none;
+}
+
+button.h {
+  font-family: inherit;
+  color: inherit;
+  border-top: 0;
+  border-left: 0;
+  border-radius: 0;
+  cursor: pointer;
+}
+button.h:hover { background: #e4e9f2; }
+button.h::before { content: "▸"; margin-right: 4px; color: var(--accent); }
+button.h[aria-expanded="true"] { width: auto; }
+button.h[aria-expanded="true"]::before { content: "▾"; }
+
+/* ---------- Tidslinje: celler ---------- */
+.c { height: var(--row-h); }
+
+.c.sum {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: .85rem;
+  color: #475467;
+  background: #f9fafb;
+}
+
+.c input {
+  width: 100%;
+  height: 100%;
+  border: 0;
+  background: transparent;
+  text-align: center;
+  font: inherit;
+  font-size: .85rem;
+  -moz-appearance: textfield;
+}
+.c input::-webkit-inner-spin-button,
+.c input::-webkit-outer-spin-button { -webkit-appearance: none; }
+.c input:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+  background: #fff;
+}
+
+/* ---------- Knapp ---------- */
+.add {
+  margin-top: 16px;
+  padding: 8px 14px;
+  font: inherit;
+  cursor: pointer;
+  border: 1px solid var(--accent);
+  color: var(--accent);
+  background: #fff;
+  border-radius: 6px;
+}
+.add:hover { background: var(--project-bg); }
