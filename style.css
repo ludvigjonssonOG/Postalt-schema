@@ -145,9 +145,10 @@ button.h[aria-expanded="true"]::before { content: "▾"; }
   background: #fff;
 }
 
-/* ---------- Knapp ---------- */
+/* ---------- Knapp och status ---------- */
+.bar { display: flex; align-items: center; gap: 14px; margin-top: 16px; }
+
 .add {
-  margin-top: 16px;
   padding: 8px 14px;
   font: inherit;
   cursor: pointer;
@@ -157,3 +158,6 @@ button.h[aria-expanded="true"]::before { content: "▾"; }
   border-radius: 6px;
 }
 .add:hover { background: var(--project-bg); }
+
+#status { font-size: .85rem; color: #667085; }
+#status.error { color: #b42318; }

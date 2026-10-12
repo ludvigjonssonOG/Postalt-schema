@@ -9,13 +9,28 @@ const ROW_LABELS = [
   'inkomna enkäter'
 ];
 const STORAGE_KEY = 'gantt-schema-v1';
+const REMOTE_ID = 'main';          // raden i databasen som delas av alla
+const SAVE_DELAY = 700;            // ms väntan efter sista ändringen innan det sparas online
 
 // ---------- Tillstånd ----------
-const expanded = new Set(['2026']);   // nycklar för utfällda kolumner
-const projects = [];                  // { name, open, values: [ {datum: tal}, ... ] }
+const expanded = new Set(['2026']);   // utfällda kolumner (personlig vy, sparas bara lokalt)
+const projects = [];                  // { name, open, values: [ {datum: tal}, ... ] } (delas)
 
-// ---------- Spara / ladda (localStorage) ----------
-function saveState() {
+let remoteReady = false;   // true först när vi har läst från databasen
+let saveTimer = null;
+let dirty = false;
+
+const hasRemote = typeof SUPABASE_URL !== 'undefined' && !SUPABASE_URL.includes('DITT-PROJEKT');
+
+// ---------- Status ----------
+function setStatus(text, isError = false) {
+  const el = document.getElementById('status');
+  el.textContent = text;
+  el.className = isError ? 'error' : '';
+}
+
+// ---------- Lokal cache ----------
+function saveLocal() {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify({
       version: 1,
@@ -23,38 +38,89 @@ function saveState() {
       projects
     }));
   } catch (err) {
-    console.warn('Kunde inte spara till localStorage:', err);
+    console.warn('Kunde inte spara lokalt:', err);
   }
 }
 
-function loadState() {
+function normalizeProjects(list) {
+  return list.map((p, i) => ({
+    name: typeof p.name === 'string' && p.name ? p.name : `Projekt ${i + 1}`,
+    open: p.open !== false,
+    values: ROW_LABELS.map((_, ri) => ({ ...(p.values?.[ri] ?? {}) }))
+  }));
+}
+
+function setProjects(list) {
+  projects.length = 0;
+  projects.push(...normalizeProjects(list));
+}
+
+function loadLocal() {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return false;
-
+    if (!raw) return;
     const data = JSON.parse(raw);
-    if (!data || !Array.isArray(data.projects)) return false;
-
-    projects.length = 0;
-    data.projects.forEach((p, i) => {
-      projects.push({
-        name: typeof p.name === 'string' && p.name ? p.name : `Projekt ${i + 1}`,
-        open: p.open !== false,
-        // säkerställ att det finns exakt en värdelista per underrad
-        values: ROW_LABELS.map((_, ri) => ({ ...(p.values?.[ri] ?? {}) }))
-      });
-    });
-
-    if (Array.isArray(data.expanded)) {
+    if (Array.isArray(data?.projects)) setProjects(data.projects);
+    if (Array.isArray(data?.expanded)) {
       expanded.clear();
       data.expanded.forEach(k => expanded.add(String(k)));
     }
-    return projects.length > 0;
   } catch (err) {
-    console.warn('Kunde inte läsa sparad data:', err);
-    return false;
+    console.warn('Kunde inte läsa lokal data:', err);
   }
 }
+
+// ---------- Databas (Supabase via REST) ----------
+const REST = hasRemote ? `${SUPABASE_URL}/rest/v1/gantt_state` : '';
+const headers = () => ({ apikey: SUPABASE_KEY, 'Content-Type': 'application/json' });
+
+async function fetchRemote() {
+  const res = await fetch(`${REST}?id=eq.${REMOTE_ID}&select=data`, { headers: headers() });
+  if (!res.ok) throw new Error(`Hämtning misslyckades (${res.status})`);
+  const rows = await res.json();
+  return rows.length ? rows[0].data : null;
+}
+
+async function pushRemote() {
+  if (!hasRemote || !remoteReady || !dirty) return;
+  dirty = false;
+  setStatus('Sparar…');
+  try {
+    const res = await fetch(REST, {
+      method: 'POST',
+      keepalive: true,
+      headers: { ...headers(), Prefer: 'resolution=merge-duplicates,return=minimal' },
+      body: JSON.stringify({
+        id: REMOTE_ID,
+        data: { version: 1, projects },
+        updated_at: new Date().toISOString()
+      })
+    });
+    if (!res.ok) throw new Error(`Sparning misslyckades (${res.status})`);
+    setStatus('Sparat ✓');
+  } catch (err) {
+    dirty = true;
+    console.warn(err);
+    setStatus('Kunde inte spara online – försöker igen vid nästa ändring', true);
+  }
+}
+
+// Spara delade ändringar: direkt lokalt, online efter en kort paus
+function saveData() {
+  saveLocal();
+  if (!hasRemote) return;
+  dirty = true;
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(pushRemote, SAVE_DELAY);
+}
+
+// Skicka väntande ändringar om fliken stängs eller döljs
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'hidden' && dirty) {
+    clearTimeout(saveTimer);
+    pushRemote();
+  }
+});
 
 // ---------- Hjälpfunktioner ----------
 const pad = n => String(n).padStart(2, '0');
@@ -99,7 +165,6 @@ function buildTimeline() {
 
 const TIMELINE = buildTimeline();
 
-// Vilka kolumner syns just nu? (utfällda noder ersätts av sina barn)
 function visibleColumns(nodes, out = []) {
   for (const n of nodes) {
     if (n.isDate || !expanded.has(n.key)) out.push(n);
@@ -170,10 +235,8 @@ function dataRow(p, pi, ri, cols) {
       c.append(input);
       tl.append(c);
     } else {
-      // hopfälld period: visa summan av de inskrivna talen
       const sum = col.dates.reduce((s, d) => s + (vals[d] || 0), 0);
-      const c = h('div', sum ? 'c sum' : 'c', sum ? sum : '');
-      tl.append(c);
+      tl.append(h('div', sum ? 'c sum' : 'c', sum ? sum : ''));
     }
   }
 
@@ -204,8 +267,6 @@ function render() {
   gantt.replaceChildren(inner);
   gantt.scrollLeft = scrollLeft;
   gantt.scrollTop = scrollTop;
-
-  saveState();   // varje ändring som ritar om sidan sparas också
 }
 
 // ---------- Projekt ----------
@@ -216,18 +277,20 @@ function addProject() {
     values: ROW_LABELS.map(() => ({}))
   });
   render();
+  saveData();
 }
 
 // ---------- Händelser ----------
 const gantt = document.getElementById('gantt');
 
 gantt.addEventListener('click', e => {
-  // Fäll ut/in kolumner (år, kvartal, månad)
+  // Fäll ut/in kolumner (personlig vy, sparas bara lokalt)
   const colBtn = e.target.closest('button.h');
   if (colBtn) {
     const key = colBtn.dataset.key;
     expanded.has(key) ? expanded.delete(key) : expanded.add(key);
     render();
+    saveLocal();
     return;
   }
   // Fäll ut/in projektets rader
@@ -236,10 +299,10 @@ gantt.addEventListener('click', e => {
     const p = projects[rowBtn.dataset.project];
     p.open = !p.open;
     render();
+    saveData();
   }
 });
 
-// Siffror i datumceller sparas direkt (utan att rita om, så markören hänger kvar)
 gantt.addEventListener('input', e => {
   const t = e.target;
   if (!t.matches('.c input')) return;
@@ -247,19 +310,43 @@ gantt.addEventListener('input', e => {
   const n = t.valueAsNumber;
   if (Number.isNaN(n)) delete vals[t.dataset.date];
   else vals[t.dataset.date] = n;
-  saveState();
+  saveData();
 });
 
-// Nytt projektnamn: uppdaterar även radnamnen
 gantt.addEventListener('change', e => {
   if (!e.target.matches('.name-input')) return;
   const p = projects[e.target.dataset.project];
   p.name = e.target.value.trim() || p.name;
-  render();   // sparar också
+  render();
+  saveData();
 });
 
 document.getElementById('add-project').addEventListener('click', addProject);
 
 // ---------- Start ----------
-if (loadState()) render();
-else addProject();
+async function init() {
+  loadLocal();                       // visa cachen direkt, så sidan inte är tom
+  if (projects.length) render();
+
+  if (!hasRemote) {
+    setStatus('Endast lokal lagring (fyll i config.js för att spara online)', true);
+    if (!projects.length) addProject();
+    return;
+  }
+
+  setStatus('Hämtar…');
+  try {
+    const remote = await fetchRemote();
+    if (remote && Array.isArray(remote.projects)) setProjects(remote.projects);
+    remoteReady = true;
+    if (!projects.length) addProject();
+    else { render(); if (!remote) saveData(); }   // första gången: skicka upp det som finns lokalt
+    setStatus('Ansluten ✓');
+  } catch (err) {
+    console.warn(err);
+    setStatus('Kunde inte nå databasen – ändringar sparas bara lokalt', true);
+    if (!projects.length) addProject();
+  }
+}
+
+init();
