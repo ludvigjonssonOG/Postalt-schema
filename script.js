@@ -132,6 +132,32 @@ function h(tag, className, text) {
   return e;
 }
 
+// Anpassar namnkolumnens bredd efter det längsta projektnamnet
+const measureCtx = document.createElement('canvas').getContext('2d');
+
+function updateNameWidth(overrideIndex, typed) {
+  const cs = getComputedStyle(document.body);
+  measureCtx.font = `600 ${cs.fontSize} ${cs.fontFamily}`;   // projektnamn är fetstilta
+
+  const names = projects.map((p, i) => (i === overrideIndex ? typed : p.name));
+  const longest = Math.max(0, ...names.map(n => measureCtx.measureText(n).width));
+
+  // + pil, luft och marginaler. Min 220 px, max 520 px.
+  const width = Math.min(Math.max(Math.ceil(longest) + 80, 220), 520);
+  document.getElementById('gantt').style.setProperty('--name-w', `${width}px`);
+}
+
+function render() {
+  updateNameWidth();                       // <-- ny rad
+  const gantt = document.getElementById('gantt');
+  // ...resten som förut
+
+
+  gantt.addEventListener('input', e => {
+  if (!e.target.matches('.name-input')) return;
+  updateNameWidth(Number(e.target.dataset.project), e.target.value);
+});
+
 // ---------- Bygg tidslinjens träd: år > kvartal > månad > datum ----------
 function buildTimeline() {
   return YEARS.map(y => {
@@ -216,7 +242,7 @@ function projectRow(p, pi, cols) {
 
 function dataRow(p, pi, ri, cols) {
   const row = h('div', 'row sub');
-  row.append(h('div', 'name', `${p.name} ${ROW_LABELS[ri]}`));
+  row.append(h('div', 'name', ROW_LABELS[ri]));
 
   const tl = h('div', 'tl');
   const vals = p.values[ri];
