@@ -11,6 +11,8 @@ const ROW_LABELS = [
 const STORAGE_KEY = 'gantt-schema-v1';
 const REMOTE_ID = 'main';          // raden i databasen som delas av alla
 const SAVE_DELAY = 700;            // ms väntan efter sista ändringen innan det sparas online
+const NAME_MIN = 220;              // minsta bredd på namnkolumnen (px)
+const NAME_MAX = 520;              // största bredd på namnkolumnen (px)
 
 // ---------- Tillstånd ----------
 const expanded = new Set(['2026']);   // utfällda kolumner (personlig vy, sparas bara lokalt)
@@ -21,6 +23,8 @@ let saveTimer = null;
 let dirty = false;
 
 const hasRemote = typeof SUPABASE_URL !== 'undefined' && !SUPABASE_URL.includes('DITT-PROJEKT');
+
+const gantt = document.getElementById('gantt');
 
 // ---------- Status ----------
 function setStatus(text, isError = false) {
@@ -142,21 +146,10 @@ function updateNameWidth(overrideIndex, typed) {
   const names = projects.map((p, i) => (i === overrideIndex ? typed : p.name));
   const longest = Math.max(0, ...names.map(n => measureCtx.measureText(n).width));
 
-  // + pil, luft och marginaler. Min 220 px, max 520 px.
-  const width = Math.min(Math.max(Math.ceil(longest) + 80, 220), 520);
-  document.getElementById('gantt').style.setProperty('--name-w', `${width}px`);
+  // + pil, luft och marginaler
+  const width = Math.min(Math.max(Math.ceil(longest) + 80, NAME_MIN), NAME_MAX);
+  gantt.style.setProperty('--name-w', `${width}px`);
 }
-
-function render() {
-  updateNameWidth();                       // <-- ny rad
-  const gantt = document.getElementById('gantt');
-  // ...resten som förut
-
-
-  gantt.addEventListener('input', e => {
-  if (!e.target.matches('.name-input')) return;
-  updateNameWidth(Number(e.target.dataset.project), e.target.value);
-});
 
 // ---------- Bygg tidslinjens träd: år > kvartal > månad > datum ----------
 function buildTimeline() {
@@ -242,7 +235,7 @@ function projectRow(p, pi, cols) {
 
 function dataRow(p, pi, ri, cols) {
   const row = h('div', 'row sub');
-  row.append(h('div', 'name', ROW_LABELS[ri]));
+  row.append(h('div', 'name', ROW_LABELS[ri]));   // bara radens rubrik, utan projektnamn
 
   const tl = h('div', 'tl');
   const vals = p.values[ri];
@@ -271,7 +264,8 @@ function dataRow(p, pi, ri, cols) {
 }
 
 function render() {
-  const gantt = document.getElementById('gantt');
+  updateNameWidth();
+
   const { scrollLeft, scrollTop } = gantt;
   const cols = visibleColumns(TIMELINE);
 
@@ -307,8 +301,6 @@ function addProject() {
 }
 
 // ---------- Händelser ----------
-const gantt = document.getElementById('gantt');
-
 gantt.addEventListener('click', e => {
   // Fäll ut/in kolumner (personlig vy, sparas bara lokalt)
   const colBtn = e.target.closest('button.h');
@@ -331,6 +323,14 @@ gantt.addEventListener('click', e => {
 
 gantt.addEventListener('input', e => {
   const t = e.target;
+
+  // Projektnamn: justera kolumnbredden medan man skriver
+  if (t.matches('.name-input')) {
+    updateNameWidth(Number(t.dataset.project), t.value);
+    return;
+  }
+
+  // Siffror i datumceller
   if (!t.matches('.c input')) return;
   const vals = projects[t.dataset.project].values[t.dataset.row];
   const n = t.valueAsNumber;
@@ -375,4 +375,4 @@ async function init() {
   }
 }
 
-init();
+init();   // måste ligga sist i filen
